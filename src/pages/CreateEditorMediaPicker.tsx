@@ -3,10 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { Upload, X } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 
-interface EditorStudioClip {
+export interface EditorStudioClip {
   type: "video" | "image";
   url: string;
   name: string;
+}
+
+export interface EditorStudioLocationState {
+  clips?: EditorStudioClip[];
+  templateSources?: import("@/lib/types").PurchaseSource[];
 }
 
 export default function CreateEditorMediaPicker() {
