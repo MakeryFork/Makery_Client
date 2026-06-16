@@ -1,6 +1,7 @@
 import { useState, useRef, useLayoutEffect, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ChevronRight, Plus, X } from "lucide-react";
+import MarkdownPreview from "@uiw/react-markdown-preview";
 import BuyersMarkdownEditor from "@/components/BuyersMarkdownEditor";
 import { useCreatePost } from "@/hooks/usePosts";
 import { useExportVideo } from "@/hooks/useVideoProjects";
@@ -388,23 +389,33 @@ export default function CreatePost() {
       )}
 
       {tab === "buyers" && (
-        <div className="px-4 sm:px-[5%] py-6">
-          <div className="mb-4">
-            <label className="font-paperlogy text-sm font-semibold text-black block mb-1">
-              Title
-            </label>
+        <div className="flex h-[calc(100vh-60px)] overflow-hidden">
+          {/* Left: Editor */}
+          <div className="flex flex-col w-1/2 border-r border-[#E8E8E8] overflow-hidden">
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Post title"
-              className="w-full border border-[#D8D8D8] rounded-md px-3 py-2 font-paperlogy text-sm text-black focus:border-[#FFCA1D] outline-none"
+              placeholder="Enter a title."
+              className="w-full shrink-0 border-none outline-none font-paperlogy font-semibold text-[32px] sm:text-[40px] leading-tight text-black placeholder:text-[#BDBDBD] pt-10 pb-6 px-8"
+            />
+            <BuyersMarkdownEditor
+              value={buyersMarkdown}
+              onChange={setBuyersMarkdown}
             />
           </div>
-          <BuyersMarkdownEditor
-            title="Buyer-Only Content"
-            value={buyersMarkdown}
-            onChange={setBuyersMarkdown}
-          />
+
+          {/* Right: Preview */}
+          <div className="flex flex-col w-1/2 bg-[#F2F3F5] px-10 pt-10 pb-6 overflow-y-auto" data-color-mode="light">
+            <p className="font-paperlogy font-semibold text-[32px] sm:text-[40px] leading-tight text-[#BDBDBD] mb-6">
+              {title || "Enter a title."}
+            </p>
+            {buyersMarkdown && (
+              <MarkdownPreview
+                source={buyersMarkdown}
+                style={{ background: "transparent", color: "#666" }}
+              />
+            )}
+          </div>
         </div>
       )}
     </div>

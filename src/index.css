@@ -42,37 +42,3 @@
   }
 }
 
-/* Buyers Markdown Editor */
-.buyers-md-editor .w-md-editor {
-  border: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-}
-
-.buyers-md-editor .w-md-editor-toolbar {
-  height: auto !important;
-  padding: 12px !important;
-  border-bottom: 1px solid #e0e0e0 !important;
-  background: #fafafa !important;
-}
-
-.buyers-md-editor .w-md-editor-toolbar ul li button {
-  min-height: 44px !important;
-}
-
-.buyers-md-editor .w-md-editor-toolbar ul li button:hover {
-  background: rgba(255, 202, 29, 0.12) !important;
-  border-radius: 6px !important;
-}
-
-.buyers-md-editor .w-md-editor-toolbar-divider {
-  background-color: #e0e0e0 !important;
-}
-
-.buyers-md-editor .w-md-editor-text-input,
-.buyers-md-editor .w-md-editor-text-pre > code,
-.buyers-md-editor .w-md-editor-text-pre {
-  font-size: 1.125rem !important;
-  line-height: 1.75 !important;
-  padding: 22px 12px 28px !important;
-}

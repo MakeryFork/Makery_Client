@@ -24,6 +24,7 @@ import {
   RotateCcw,
   RotateCw,
 } from "lucide-react";
+import { BASE_URL, getToken } from "@/lib/api";
 import type { PurchaseSource } from "@/lib/types";
 
 interface EditorStudioClip {
@@ -378,8 +379,9 @@ export default function CreateEditorStudio() {
 
     try {
       const ffmpeg = ffmpegRef.current;
+      // FFmpeg progress maps to 0–70%
       ffmpeg.on("progress", ({ progress }) => {
-        setExportProgress(Math.round(progress * 100));
+        setExportProgress(Math.round(progress * 70));
       });
 
       const outputParts: string[] = [];
@@ -443,14 +445,51 @@ export default function CreateEditorStudio() {
       const rawData: any = await ffmpeg.readFile(finalFile);
       const uint8 = rawData instanceof Uint8Array ? rawData : new Uint8Array(rawData);
       const blob = new Blob([uint8], { type: "video/mp4" });
-      const url = URL.createObjectURL(blob);
+      const blobUrl = URL.createObjectURL(blob);
+
+      // 1. Trigger download
       const a = document.createElement("a");
-      a.href = url;
+      a.href = blobUrl;
       a.download = "makery-export.mp4";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+
+      // 2. Upload to server (70–100%)
+      setExportProgress(75);
+      const exportFile = new File([blob], "makery-export.mp4", { type: "video/mp4" });
+      let uploadedUrl: string | null = null;
+
+      try {
+        const token = getToken();
+        const formData = new FormData();
+        formData.append("file", exportFile);
+        const res = await fetch(`${BASE_URL}/uploads`, {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formData,
+        });
+        const json = await res.json();
+        if (json.success) {
+          uploadedUrl = json.data.url as string;
+        }
+      } catch {
+        // Upload failed — blob URL used as fallback
+      }
+
+      setExportProgress(100);
+
+      // 3. Navigate to CreatePost with the exported clip
+      const clipUrl = uploadedUrl ?? blobUrl;
+      if (uploadedUrl) URL.revokeObjectURL(blobUrl);
+
+      navigate("/create/post", {
+        state: {
+          fromEditor: true,
+          clips: [{ type: "video", url: clipUrl, name: "makery-export.mp4" }],
+          projectId: state?.projectId ?? null,
+        },
+      });
     } catch (err) {
       console.error("Export failed:", err);
       alert("Export failed.");
