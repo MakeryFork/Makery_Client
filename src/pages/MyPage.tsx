@@ -6,6 +6,7 @@ import UserAvatar from "@/components/UserAvatar";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserPosts } from "@/hooks/usePosts";
 import { useUpdateProfile } from "@/hooks/useUsers";
+import { useUploadFile } from "@/hooks/useUpload";
 import type { Post } from "@/lib/types";
 
 function formatDate(dateStr: string) {
@@ -26,12 +27,14 @@ export default function MyPage() {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [tempAvatarUrl, setTempAvatarUrl] = useState<string | null>(null);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const { data: postsData, isLoading: postsLoading } = useUserPosts(user?.id);
   const updateProfile = useUpdateProfile();
+  const uploadFile = useUploadFile();
 
   if (!isLoggedIn) {
     return (
@@ -47,18 +50,26 @@ export default function MyPage() {
   const handleEditStart = () => {
     setName(user?.name ?? "");
     setBio(user?.bio ?? "");
+    setAvatarFile(null);
     setTempAvatarUrl(null);
     setEditing(true);
   };
 
   const handleSave = async () => {
-    await updateProfile.mutateAsync({ name, bio });
+    let profileImageUrl: string | undefined;
+    if (avatarFile) {
+      const result = await uploadFile.mutateAsync(avatarFile);
+      profileImageUrl = result.url;
+    }
+    await updateProfile.mutateAsync({ name, bio, profileImageUrl });
     setEditing(false);
+    setAvatarFile(null);
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setAvatarFile(file);
       setTempAvatarUrl(URL.createObjectURL(file));
     }
   };
@@ -116,10 +127,10 @@ export default function MyPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={handleSave}
-                    disabled={updateProfile.isPending}
+                    disabled={updateProfile.isPending || uploadFile.isPending}
                     className="px-5 py-2 bg-[#FFCA1D] text-white font-paperlogy text-sm font-semibold rounded-xl hover:bg-[#e6b800] transition-colors disabled:opacity-50"
                   >
-                    {updateProfile.isPending ? "Saving..." : "Save"}
+                    {uploadFile.isPending ? "Uploading..." : updateProfile.isPending ? "Saving..." : "Save"}
                   </button>
                   <button
                     onClick={() => setEditing(false)}

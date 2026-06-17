@@ -20,48 +20,12 @@ import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
 import type { EditorStudioClip, EditorStudioLocationState } from "./CreateEditorMediaPicker";
 import type { PurchaseSource } from "@/lib/types";
+import ExportProgressModal from "@/components/ExportProgressModal";
 
 function isVideo(t: string) {
   return t === "video" || t.startsWith("video/");
 }
 
-function ExportOverlay({ progress }: { progress: number }) {
-  const circumference = 2 * Math.PI * 36;
-  const offset = circumference - (progress / 100) * circumference;
-
-  return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="flex flex-col items-center gap-6 rounded-2xl bg-white px-10 py-8 shadow-2xl w-72">
-        <div className="relative flex h-24 w-24 items-center justify-center">
-          <svg className="absolute inset-0 -rotate-90" width="96" height="96" viewBox="0 0 96 96">
-            <circle cx="48" cy="48" r="36" fill="none" stroke="#E5E8EB" strokeWidth="6" />
-            <circle
-              cx="48" cy="48" r="36" fill="none"
-              stroke="#FFCA1D" strokeWidth="6"
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={offset}
-              style={{ transition: "stroke-dashoffset 0.3s ease" }}
-            />
-          </svg>
-          <span className="font-paperlogy text-xl font-bold text-[#333]">{progress}%</span>
-        </div>
-
-        <div className="w-full space-y-2 text-center">
-          <p className="font-paperlogy text-base font-bold text-[#333]">Exporting video</p>
-          <p className="font-paperlogy text-xs text-[#999]">This may take a moment...</p>
-        </div>
-
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#E5E8EB]">
-          <div
-            className="h-full rounded-full bg-[#FFCA1D] transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 type ToastType = "info" | "error";
 
@@ -299,6 +263,7 @@ export default function CreateEditorStudio() {
   const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [exportDone, setExportDone] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
 
   const showToast = (message: string, type: ToastType = "info") => {
@@ -378,7 +343,7 @@ export default function CreateEditorStudio() {
       setFfmpegLoaded(true);
     } catch (e) {
       console.error("FFmpeg load error:", e);
-      // Fallback or handle error
+      showToast("Export engine failed to load. Refresh the page and try again.", "error");
     }
   };
 
@@ -906,84 +871,118 @@ export default function CreateEditorStudio() {
       return;
     }
 
+    // Show overlay first, then yield so React renders before FFmpeg blocks
     setIsExporting(true);
-    setExportProgress(0);
+    setExportProgress(2);
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
     const ffmpeg = ffmpegRef.current;
-    const onProgress = ({ progress }: { progress: number }) => {
-      setExportProgress(Math.round(Math.min(progress, 1) * 100));
-    };
-    ffmpeg.on("progress", onProgress);
+
+    // Clip needs re-encode only if it has rotation / flip / speed change
+    const needsReencode = (c: TimelineClip) =>
+      (c.playbackRate ?? 1) !== 1 ||
+      !!(c.effects?.rotate) ||
+      !!(c.effects?.flipH) ||
+      !!(c.effects?.flipV);
 
     try {
       for (let i = 0; i < videoClips.length; i++) {
         const c = videoClips[i];
+        const outFile = `clip_${i}.mp4`;
+
+        // Progress: writing phase (2% → 40% spread across clips)
+        setExportProgress(2 + Math.round((i / videoClips.length) * 38));
+
         await ffmpeg.writeFile(`in_${i}.mp4`, await fetchFile(c.url));
 
         const trimDuration = c.trimEnd - c.trimStart;
-        const rate = c.playbackRate || 1;
+        const rate = c.playbackRate ?? 1;
+        const isTrimmed = c.trimStart > 0 || c.trimEnd < c.duration;
 
-        const vfFilters: string[] = [];
-        const afFilters: string[] = [];
+        if (!needsReencode(c)) {
+          // Stream copy — no re-encode needed (trim only or no edits)
+          // Input seeking before -i for accurate + fast trim
+          const cmd: string[] = [];
+          if (isTrimmed) {
+            cmd.push("-ss", String(c.trimStart), "-t", String(trimDuration));
+          }
+          cmd.push("-i", `in_${i}.mp4`, "-c", "copy", "-avoid_negative_ts", "make_zero", outFile);
+          await ffmpeg.exec(cmd);
+        } else {
+          // Re-encode only when necessary (rotation / flip / speed)
+          const vfFilters: string[] = [];
+          const afFilters: string[] = [];
 
-        if (rate !== 1) {
-          vfFilters.push(`setpts=${(1 / rate).toFixed(4)}*PTS`);
-          afFilters.push(`atempo=${rate}`);
+          if (rate !== 1) {
+            vfFilters.push(`setpts=${(1 / rate).toFixed(4)}*PTS`);
+            afFilters.push(`atempo=${Math.min(Math.max(rate, 0.5), 2)}`);
+          }
+          if (c.effects?.rotate === 90) vfFilters.push("transpose=1");
+          else if (c.effects?.rotate === 180) vfFilters.push("transpose=1,transpose=1");
+          else if (c.effects?.rotate === 270) vfFilters.push("transpose=2");
+          if (c.effects?.flipH) vfFilters.push("hflip");
+          if (c.effects?.flipV) vfFilters.push("vflip");
+
+          const cmd: string[] = [
+            "-ss", String(c.trimStart),
+            "-t", String(trimDuration),
+            "-i", `in_${i}.mp4`,
+            "-preset", "ultrafast",
+            "-crf", "26",
+          ];
+          if (vfFilters.length > 0) cmd.push("-vf", vfFilters.join(","));
+          if (afFilters.length > 0) cmd.push("-af", afFilters.join(","));
+          else cmd.push("-c:a", "copy");
+          cmd.push("-c:v", "libx264", outFile);
+
+          // Track FFmpeg encode progress for this clip
+          const clipBase = 40 + Math.round((i / videoClips.length) * 50);
+          const clipTop  = 40 + Math.round(((i + 1) / videoClips.length) * 50);
+          const onProgress = ({ progress }: { progress: number }) => {
+            setExportProgress(clipBase + Math.round(progress * (clipTop - clipBase)));
+          };
+          ffmpeg.on("progress", onProgress);
+          await ffmpeg.exec(cmd);
+          ffmpeg.off("progress", onProgress);
         }
 
-        if (c.effects?.rotate === 90) vfFilters.push("transpose=1");
-        else if (c.effects?.rotate === 180) vfFilters.push("transpose=1,transpose=1");
-        else if (c.effects?.rotate === 270) vfFilters.push("transpose=2");
-        if (c.effects?.flipH) vfFilters.push("hflip");
-        if (c.effects?.flipV) vfFilters.push("vflip");
-
-        const cmd: string[] = [
-          "-ss", String(c.trimStart),
-          "-t", String(trimDuration),
-          "-i", `in_${i}.mp4`,
-          "-preset", "ultrafast",
-        ];
-
-        if (vfFilters.length > 0) cmd.push("-vf", vfFilters.join(","));
-        if (afFilters.length > 0) cmd.push("-af", afFilters.join(","));
-
-        cmd.push("-c:v", "libx264", "-c:a", "aac", `clip_${i}.mp4`);
-        await ffmpeg.exec(cmd);
+        // Progress: after this clip encoded
+        setExportProgress(40 + Math.round(((i + 1) / videoClips.length) * 50));
       }
 
-      let finalFile: string;
+      setExportProgress(92);
 
+      let finalFile: string;
       if (videoClips.length === 1) {
         finalFile = "clip_0.mp4";
       } else {
         const listContent = videoClips.map((_, i) => `file 'clip_${i}.mp4'`).join("\n");
         await ffmpeg.writeFile("concat.txt", listContent);
-        await ffmpeg.exec([
-          "-f", "concat",
-          "-safe", "0",
-          "-i", "concat.txt",
-          "-c", "copy",
-          "output.mp4",
-        ]);
+        await ffmpeg.exec(["-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy", "output.mp4"]);
         finalFile = "output.mp4";
       }
+
+      setExportProgress(97);
 
       const data = await ffmpeg.readFile(finalFile);
       const uint8 = data instanceof Uint8Array ? Uint8Array.from(data) : new Uint8Array();
       const blob = new Blob([uint8], { type: "video/mp4" });
       const blobUrl = URL.createObjectURL(blob);
+
+      setExportProgress(100);
+
       const a = document.createElement("a");
       a.href = blobUrl;
       a.download = "makery_video.mp4";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
+
+      setExportDone(true);
     } catch (e) {
       console.error("Export failed:", e);
       showToast("Failed to export video. Please try again.", "error");
-    } finally {
-      ffmpeg.off("progress", onProgress);
       setIsExporting(false);
       setExportProgress(0);
     }
@@ -1094,7 +1093,16 @@ export default function CreateEditorStudio() {
 
   return (
     <div className="fixed inset-0 z-[100] flex min-h-0 flex-col bg-white">
-      {isExporting && <ExportOverlay progress={exportProgress} />}
+      <ExportProgressModal
+        isExporting={isExporting}
+        progress={exportProgress}
+        isDone={exportDone}
+        onClose={() => {
+          setExportDone(false);
+          setIsExporting(false);
+          setExportProgress(0);
+        }}
+      />
       {toast && (
         <ToastNotification
           message={toast.message}

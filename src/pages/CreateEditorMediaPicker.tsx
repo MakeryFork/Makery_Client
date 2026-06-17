@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Upload, X } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 
@@ -11,11 +11,14 @@ export interface EditorStudioClip {
 
 export interface EditorStudioLocationState {
   clips?: EditorStudioClip[];
-  templateSources?: import("@/lib/types").PurchaseSource[];
+  templateSources?: import("@/lib/types").TemplateSources;
+  projectId?: number;
 }
 
 export default function CreateEditorMediaPicker() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const incomingTemplates = (location.state as EditorStudioLocationState | null)?.templateSources;
   const [clips, setClips] = useState<EditorStudioClip[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -51,7 +54,9 @@ export default function CreateEditorMediaPicker() {
 
   const handleStart = () => {
     if (clips.length === 0) return;
-    navigate("/create/editor/studio", { state: { clips } });
+    const state: EditorStudioLocationState = { clips };
+    if (incomingTemplates) state.templateSources = incomingTemplates;
+    navigate("/create/editor/studio", { state });
   };
 
   return (

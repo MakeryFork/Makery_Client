@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
 export default function PaymentSuccess() {
@@ -8,6 +9,7 @@ export default function PaymentSuccess() {
   const [status, setStatus] = useState<"loading" | "done" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState("");
   const called = useRef(false);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (called.current) return;
@@ -19,7 +21,10 @@ export default function PaymentSuccess() {
 
     api
       .post("/purchases/confirm", { paymentKey, orderId, amount })
-      .then(() => setStatus("done"))
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["purchases"] });
+        setStatus("done");
+      })
       .catch((err) => {
         setErrorMsg(err instanceof Error ? err.message : "Payment confirmation failed.");
         setStatus("error");

@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api, getToken } from "@/lib/api";
 import { requestTossPayment } from "@/lib/toss";
-import type { Purchase, PurchaseOrder, PurchaseSource, Paginated } from "@/lib/types";
+import type { Purchase, PurchaseOrder, SourcesResponse, VideoProject, Paginated } from "@/lib/types";
 
 export function useMyPurchases(page = 1) {
   return useQuery<Paginated<Purchase>>({
@@ -45,18 +45,18 @@ export function useImportVideo() {
   const navigate = useNavigate();
   return useMutation({
     mutationFn: (postId: number) =>
-      api.post<{ projectId: number }>(`/purchases/${postId}/import-video`),
-    onSuccess: (data) => {
+      api.post<VideoProject>(`/purchases/${postId}/import-video`),
+    onSuccess: (project) => {
       queryClient.invalidateQueries({ queryKey: ["video-projects"] });
-      navigate("/create/editor/studio", { state: { projectId: data.projectId } });
+      navigate("/create/editor/studio", { state: { projectId: project.id } });
     },
   });
 }
 
 export function usePurchaseSources(postId: number | null) {
-  return useQuery<PurchaseSource[]>({
+  return useQuery<SourcesResponse>({
     queryKey: ["purchases", postId, "sources"],
-    queryFn: () => api.get<PurchaseSource[]>(`/purchases/${postId}/sources`),
+    queryFn: () => api.get<SourcesResponse>(`/purchases/${postId}/sources`),
     enabled: !!postId && !!getToken(),
   });
 }

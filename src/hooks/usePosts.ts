@@ -44,7 +44,10 @@ export function usePost(id: number | null) {
 export function useBuyerContent(postId: number | null) {
   return useQuery<BuyerContent>({
     queryKey: ["posts", postId, "buyer-content"],
-    queryFn: () => api.get<BuyerContent>(`/posts/${postId}/buyer-content`),
+    queryFn: async () => {
+      const res = await api.get<{ buyerContent: BuyerContent }>(`/posts/${postId}/buyer-content`);
+      return res.buyerContent;
+    },
     enabled: !!postId && !!getToken(),
   });
 }
@@ -60,19 +63,43 @@ export function useUserPosts(userId: number | undefined, page = 1) {
   });
 }
 
+type PostInput = {
+  title: string;
+  description?: string;
+  thumbnailUrl?: string;
+  price: number;
+  details?: { content: string; sortOrder: number }[];
+  tagIds?: number[];
+  buyerContent?: { title: string; markdownContent: string };
+  videoProjectId?: number;
+};
+
 export function useCreatePost() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: {
-      title: string;
-      description?: string;
-      thumbnailUrl?: string;
-      price: number;
-      details?: { content: string; sortOrder: number }[];
-      tagIds?: number[];
-      buyerContent?: { title: string; markdownContent: string };
-      videoProjectId?: number;
-    }) => api.post<Post>("/posts", data),
+    mutationFn: (data: PostInput) => api.post<Post>("/posts", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+    },
+  });
+}
+
+export function useUpdatePost() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<PostInput> }) =>
+      api.patch<Post>(`/posts/${id}`, data),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["posts", id] });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+    },
+  });
+}
+
+export function useDeletePost() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete(`/posts/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
     },

@@ -32,7 +32,7 @@ export default function AppHeader() {
             className="h-[40px] lg:h-[56px] w-auto object-contain"
           />
         </Link>
-        <div className="absolㅇute right-0 flex items-center h-full px-6 lg:px-8">
+        <div className="absolute right-0 flex items-center h-full px-6 lg:px-8">
           {isLoggedIn ? (
             <button
               onClick={() => navigate("/mypage")}

@@ -22,8 +22,12 @@ export function useVideoProject(id: number | null) {
 export function useCreateVideoProject() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { title: string; editData: object }) =>
-      api.post<VideoProject>("/video-projects", data),
+    mutationFn: (data: {
+      title: string;
+      thumbnailUrl?: string;
+      duration?: number;
+      editData: object;
+    }) => api.post<VideoProject>("/video-projects", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["video-projects"] });
     },
@@ -38,9 +42,10 @@ export function useUpdateVideoProject() {
       data,
     }: {
       id: number;
-      data: { title?: string; editData?: object };
+      data: { title?: string; thumbnailUrl?: string; duration?: number; editData?: object };
     }) => api.patch<VideoProject>(`/video-projects/${id}`, data),
-    onSuccess: () => {
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["video-projects", id] });
       queryClient.invalidateQueries({ queryKey: ["video-projects"] });
     },
   });

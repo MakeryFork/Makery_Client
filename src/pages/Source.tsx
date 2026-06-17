@@ -6,6 +6,7 @@ import {
   Music,
   Sparkles,
   Type,
+  Scissors,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -14,45 +15,99 @@ import PostDetailModal from "@/components/PostDetailModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useMyPurchases, usePurchaseSources } from "@/hooks/usePurchases";
 import { api } from "@/lib/api";
-import type { Post, PurchaseSource } from "@/lib/types";
+import type { Post, SourcesResponse, TemplateSources } from "@/lib/types";
 
-function SourceRow({ source }: { source: PurchaseSource }) {
-  const label =
-    source.effectType ??
-    (source.type === "audio"
-      ? ((source.properties?.name as string | undefined) ?? "Audio")
-      : source.type === "animation"
-      ? "Animation"
-      : "Effect");
+interface DisplaySource {
+  id: string;
+  label: string;
+  category: "Effect" | "Text" | "Audio" | "Animation" | "Split";
+  timeLabel?: string;
+  downloadUrl?: string;
+}
 
+function toDisplaySources(ts: TemplateSources): DisplaySource[] {
+  const items: DisplaySource[] = [];
+  ts.effects?.forEach((e, i) =>
+    items.push({
+      id: `e${i}`,
+      label: e.filter ? `Filter: ${e.filter}` : `Effect (clip ${e.clipId})`,
+      category: "Effect",
+    })
+  );
+  ts.texts?.forEach((t) =>
+    items.push({
+      id: t.id,
+      label: `"${t.text.length > 24 ? t.text.slice(0, 24) + "…" : t.text}"`,
+      category: "Text",
+      timeLabel: `${t.startTime.toFixed(1)}s – ${t.endTime.toFixed(1)}s`,
+    })
+  );
+  ts.audios?.forEach((a) =>
+    items.push({
+      id: a.id,
+      label: a.name,
+      category: "Audio",
+      timeLabel: `${a.startTime.toFixed(1)}s – ${a.endTime.toFixed(1)}s`,
+      downloadUrl: a.url,
+    })
+  );
+  ts.animations?.forEach((a, i) =>
+    items.push({
+      id: `anim${i}`,
+      label: a.type,
+      category: "Animation",
+      timeLabel: `${a.startTime.toFixed(1)}s – ${a.endTime.toFixed(1)}s`,
+    })
+  );
+  ts.splits?.forEach((s, i) =>
+    items.push({
+      id: `split${i}`,
+      label: `Split at ${s.time.toFixed(1)}s (clip ${s.clipIndex})`,
+      category: "Split",
+    })
+  );
+  return items;
+}
+
+function SourceRow({ source }: { source: DisplaySource }) {
   const Icon =
-    source.type === "audio" ? Music : source.type === "animation" ? Sparkles : Type;
+    source.category === "Audio"
+      ? Music
+      : source.category === "Animation"
+      ? Sparkles
+      : source.category === "Text"
+      ? Type
+      : source.category === "Split"
+      ? Scissors
+      : CheckCircle2;
 
   const bg =
-    source.type === "audio"
+    source.category === "Audio"
       ? "bg-[#F0F8F0]"
-      : source.type === "animation"
+      : source.category === "Animation"
       ? "bg-[#FFF9E6]"
+      : source.category === "Text"
+      ? "bg-[#F0F4FF]"
       : "bg-[#F4F5F7]";
 
   const iconColor =
-    source.type === "audio"
+    source.category === "Audio"
       ? "text-[#4CAF50]"
-      : source.type === "animation"
+      : source.category === "Animation"
       ? "text-[#FFCA1D]"
+      : source.category === "Text"
+      ? "text-[#5B8FF9]"
       : "text-[#888]";
 
-  const downloadUrl = (source.properties?.url as string | undefined);
-
   const handleDownload = async () => {
-    if (!downloadUrl) return;
+    if (!source.downloadUrl) return;
     try {
-      const res = await fetch(downloadUrl);
+      const res = await fetch(source.downloadUrl);
       const blob = await res.blob();
       const dlUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = dlUrl;
-      a.download = label;
+      a.download = source.label;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -65,11 +120,15 @@ function SourceRow({ source }: { source: PurchaseSource }) {
   return (
     <li className={`flex items-center gap-2 rounded-lg px-3 py-2 ${bg}`}>
       <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} strokeWidth={1.5} />
-      <span className="flex-1 truncate font-paperlogy text-xs text-[#555]">{label}</span>
-      <span className="shrink-0 font-paperlogy text-[10px] text-[#BDBDBD]">
-        {source.startTime.toFixed(1)}s – {source.endTime.toFixed(1)}s
+      <span className="flex-1 truncate font-paperlogy text-xs text-[#555]">
+        {source.label}
       </span>
-      {downloadUrl ? (
+      {source.timeLabel && (
+        <span className="shrink-0 font-paperlogy text-[10px] text-[#BDBDBD]">
+          {source.timeLabel}
+        </span>
+      )}
+      {source.downloadUrl ? (
         <button
           type="button"
           onClick={handleDownload}
@@ -78,29 +137,42 @@ function SourceRow({ source }: { source: PurchaseSource }) {
           <Download className="h-3 w-3" strokeWidth={2} />
         </button>
       ) : (
-        <CheckCircle2 className="h-4 w-4 shrink-0 text-[#BDBDBD]" strokeWidth={1.5} />
+        <CheckCircle2
+          className="h-4 w-4 shrink-0 text-[#BDBDBD]"
+          strokeWidth={1.5}
+        />
       )}
     </li>
   );
 }
 
-function SourceCard({ post, onSelect }: { post: Post; onSelect: () => void }) {
+function SourceCard({
+  post,
+  onSelect,
+}: {
+  post: Post;
+  onSelect: () => void;
+}) {
   const navigate = useNavigate();
   const [showSources, setShowSources] = useState(false);
   const [isOpeningEditor, setIsOpeningEditor] = useState(false);
 
   const { data: sourcesData, isLoading: isLoadingSources } = usePurchaseSources(
-    showSources && post.videoProjectId ? post.id : null,
+    showSources && post.videoProjectId ? post.id : null
   );
-  const sources: PurchaseSource[] = (sourcesData as PurchaseSource[] | undefined) ?? [];
+
+  const displaySources: DisplaySource[] =
+    sourcesData ? toDisplaySources(sourcesData.templateSources) : [];
 
   const handleOpenInEditor = async () => {
     setIsOpeningEditor(true);
     try {
-      const data = await api.get<{ sources: PurchaseSource[] }>(`/purchases/${post.id}/sources`);
-      navigate("/create/editor", { state: { templateSources: data.sources } });
+      const data = await api.get<SourcesResponse>(`/purchases/${post.id}/sources`);
+      navigate("/create/editor", {
+        state: { templateSources: data.templateSources },
+      });
     } catch {
-      navigate("/create/editor", { state: { templateSources: [] } });
+      navigate("/create/editor", { state: {} });
     } finally {
       setIsOpeningEditor(false);
     }
@@ -114,7 +186,11 @@ function SourceCard({ post, onSelect }: { post: Post; onSelect: () => void }) {
         className="relative aspect-square w-full rounded-[12px] overflow-hidden bg-[#F0F0F0] mb-2 hover:opacity-90 transition-opacity"
       >
         {post.thumbnailUrl ? (
-          <img src={post.thumbnailUrl} alt={post.title} className="w-full h-full object-cover" />
+          <img
+            src={post.thumbnailUrl}
+            alt={post.title}
+            className="w-full h-full object-cover"
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-[#BDBDBD]">
             <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24">
@@ -129,7 +205,9 @@ function SourceCard({ post, onSelect }: { post: Post; onSelect: () => void }) {
         )}
       </button>
 
-      <p className="font-paperlogy text-sm text-black truncate mb-2">{post.title}</p>
+      <p className="font-paperlogy text-sm text-black truncate mb-2">
+        {post.title}
+      </p>
 
       {post.videoProjectId && (
         <div className="flex flex-col gap-1.5">
@@ -142,8 +220,8 @@ function SourceCard({ post, onSelect }: { post: Post; onSelect: () => void }) {
               <Download className="h-3.5 w-3.5" strokeWidth={2} />
               {isLoadingSources
                 ? "Loading..."
-                : showSources && sources.length > 0
-                ? `Sources (${sources.length})`
+                : showSources && displaySources.length > 0
+                ? `Sources (${displaySources.length})`
                 : "View Sources"}
             </span>
             {showSources ? (
@@ -159,12 +237,14 @@ function SourceCard({ post, onSelect }: { post: Post; onSelect: () => void }) {
                 <div className="flex justify-center py-4">
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#FFCA1D] border-t-transparent" />
                 </div>
-              ) : sources.length === 0 ? (
-                <p className="py-3 text-center font-paperlogy text-xs text-[#BDBDBD]">No source assets.</p>
+              ) : displaySources.length === 0 ? (
+                <p className="py-3 text-center font-paperlogy text-xs text-[#BDBDBD]">
+                  No source assets.
+                </p>
               ) : (
                 <ul className="flex flex-col gap-2 py-2">
-                  {sources.map((s, i) => (
-                    <SourceRow key={i} source={s} />
+                  {displaySources.map((s) => (
+                    <SourceRow key={s.id} source={s} />
                   ))}
                 </ul>
               )}
@@ -218,7 +298,9 @@ export default function Source() {
 
       {!isLoggedIn ? (
         <div className="py-20 text-center">
-          <p className="font-paperlogy text-[#9E9E9E]">Sign in to see your purchases.</p>
+          <p className="font-paperlogy text-[#9E9E9E]">
+            Sign in to see your purchases.
+          </p>
         </div>
       ) : (
         <section className="px-4 sm:px-[5%] mt-6 pb-16">
@@ -235,7 +317,9 @@ export default function Source() {
               ))}
             </div>
           ) : purchasedPosts.length === 0 ? (
-            <p className="text-center font-paperlogy text-[#9E9E9E] py-12">No purchases yet.</p>
+            <p className="text-center font-paperlogy text-[#9E9E9E] py-12">
+              No purchases yet.
+            </p>
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-6">
               {purchasedPosts.map((post) => (
@@ -253,7 +337,9 @@ export default function Source() {
       <PostDetailModal
         post={selectedPost}
         open={selectedPost != null}
-        onOpenChange={(open) => { if (!open) setSelectedPost(null); }}
+        onOpenChange={(open) => {
+          if (!open) setSelectedPost(null);
+        }}
         isPurchased
       />
     </div>
