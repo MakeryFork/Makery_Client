@@ -10,12 +10,17 @@ export default defineConfig({
     },
   },
   server: {
+    port: 5137,
     headers: {
-      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Embedder-Policy": "credentialless",
       "Cross-Origin-Opener-Policy": "same-origin",
     },
     proxy: {
       "/api/v1": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+      "/uploads": {
         target: "http://localhost:3000",
         changeOrigin: true,
       },

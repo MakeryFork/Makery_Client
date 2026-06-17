@@ -197,24 +197,24 @@ export default function CreatePost() {
       )}
 
       {tab === "public" && (
-        <div className="flex flex-col lg:flex-row min-h-[calc(100vh-60px)]">
+        <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-60px)]">
           {/* Left: Media */}
-          <div className="lg:w-1/2 lg:border-r border-[#F0F0F0] p-6">
+          <div className="lg:w-1/2 lg:border-r border-[#F0F0F0] flex flex-col">
             {fromEditor ? (
-              <>
+              <div className="flex flex-col h-full p-6 gap-3">
                 {allPreviews.length > 0 && (
-                  <div className="relative aspect-video rounded-xl overflow-hidden bg-black mb-4">
+                  <div className="relative flex-1 min-h-0 rounded-xl overflow-hidden bg-[#F4F5F7]">
                     {allPreviews[currentIdx].type === "video" ? (
                       <video
                         src={allPreviews[currentIdx].url}
-                        className="w-full h-full object-contain"
+                        className="w-full h-full object-cover"
                         controls
                       />
                     ) : (
                       <img
                         src={allPreviews[currentIdx].url}
                         alt=""
-                        className="w-full h-full object-contain"
+                        className="w-full h-full object-cover"
                       />
                     )}
                     {allPreviews.length > 1 && (
@@ -229,17 +229,17 @@ export default function CreatePost() {
                 )}
                 <button
                   onClick={() => navigate("/create/editor")}
-                  className="w-full py-2.5 border-2 border-[#D8D8D8] rounded-xl font-paperlogy text-sm text-[#757575] hover:border-[#FFCA1D] transition-colors"
+                  className="shrink-0 w-full py-2.5 border-2 border-[#D8D8D8] rounded-xl font-paperlogy text-sm text-[#757575] hover:border-[#FFCA1D] transition-colors"
                 >
                   Edit Again
                 </button>
-              </>
+              </div>
             ) : (
-              <>
+              <div className="flex flex-col h-full p-6 gap-3">
                 {previewUrls.length === 0 ? (
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    className="aspect-square rounded-xl border-2 border-dashed border-[#D8D8D8] flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-[#FFCA1D] transition-colors"
+                    className="flex-1 rounded-xl border-2 border-dashed border-[#D8D8D8] flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-[#FFCA1D] transition-colors"
                   >
                     <Plus className="w-10 h-10 text-[#BDBDBD]" />
                     <p className="font-paperlogy text-sm text-[#9E9E9E]">
@@ -250,19 +250,19 @@ export default function CreatePost() {
                     </button>
                   </div>
                 ) : (
-                  <div>
-                    <div className="relative aspect-video rounded-xl overflow-hidden bg-black mb-3">
+                  <>
+                    <div className="relative flex-1 min-h-0 rounded-xl overflow-hidden bg-[#F4F5F7]">
                       {files[currentIdx]?.type.startsWith("video/") ? (
                         <video
                           src={previewUrls[currentIdx]}
-                          className="w-full h-full object-contain"
+                          className="w-full h-full object-cover"
                           controls
                         />
                       ) : (
                         <img
                           src={previewUrls[currentIdx]}
                           alt=""
-                          className="w-full h-full object-contain"
+                          className="w-full h-full object-cover"
                         />
                       )}
                       {previewUrls.length > 1 && (
@@ -276,11 +276,11 @@ export default function CreatePost() {
                     </div>
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-full py-2.5 border-2 border-dashed border-[#D8D8D8] rounded-xl font-paperlogy text-sm text-[#9E9E9E] hover:border-[#FFCA1D] transition-colors flex items-center justify-center gap-2"
+                      className="shrink-0 w-full py-2.5 border-2 border-dashed border-[#D8D8D8] rounded-xl font-paperlogy text-sm text-[#9E9E9E] hover:border-[#FFCA1D] transition-colors flex items-center justify-center gap-2"
                     >
                       <Plus className="w-4 h-4" /> Add photo
                     </button>
-                  </div>
+                  </>
                 )}
                 <input
                   ref={fileInputRef}
@@ -290,12 +290,12 @@ export default function CreatePost() {
                   className="hidden"
                   onChange={(e) => handleFileSelect(e.target.files)}
                 />
-              </>
+              </div>
             )}
           </div>
 
           {/* Right: Form */}
-          <div className="lg:w-1/2 p-6 space-y-5">
+          <div className="lg:w-1/2 p-6 space-y-5 lg:overflow-y-auto">
             {/* Title */}
             <input
               value={title}

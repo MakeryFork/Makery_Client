@@ -81,7 +81,7 @@ export default function CreateEditorStudio() {
   const { ffmpegRef, ffmpegLoaded, loadFFmpeg } = useFFmpeg(showToast);
   const { isPlaying, setIsPlaying, currentTime, currentTimeRef, togglePlay, handleScroll } = usePlayback(maxDuration, timelineRef);
   const { thumbnails } = useThumbnails(clips, PIXELS_PER_SECOND);
-  const { isExporting, exportProgress, exportDone, handleExportAndDownload, resetExport } = useExport({ ffmpegRef, ffmpegLoaded, clips, onToast: showToast });
+  const { isExporting, exportProgress, exportDone, phase, handleExportAndDownload, resetExport } = useExport({ ffmpegRef, ffmpegLoaded, clips, onToast: showToast });
 
   useEditorKeyboard({
     selectedClipIndex, selectedTextId, selectedAudioId,
@@ -332,7 +332,7 @@ export default function CreateEditorStudio() {
 
   return (
     <div className="fixed inset-0 z-[100] flex min-h-0 flex-col bg-white">
-      <ExportProgressModal isExporting={isExporting} progress={exportProgress} isDone={exportDone} onClose={resetExport} />
+      <ExportProgressModal isExporting={isExporting} progress={exportProgress} isDone={exportDone} phase={phase} onClose={resetExport} />
       {toast && <ToastNotification message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       {/* Top bar */}

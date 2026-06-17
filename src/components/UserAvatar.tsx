@@ -14,6 +14,7 @@ export default function UserAvatar({ url, name, className }: Props) {
       <img
         src={url}
         alt={name ?? "avatar"}
+        crossOrigin="anonymous"
         className={cn("rounded-full object-cover", className)}
       />
     );

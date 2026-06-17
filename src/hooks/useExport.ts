@@ -4,6 +4,7 @@ import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile } from "@ffmpeg/util";
 import type { TimelineClip } from "@/components/editor/types";
 import { isVideo } from "@/components/editor/utils";
+import { getToken } from "@/lib/api";
 
 interface Props {
   ffmpegRef: MutableRefObject<FFmpeg>;
@@ -12,23 +13,29 @@ interface Props {
   onToast: (msg: string, type?: "info" | "error") => void;
 }
 
+export type ExportPhase = "idle" | "encoding" | "uploading" | "done";
+
 export function useExport({ ffmpegRef, ffmpegLoaded, clips, onToast }: Props) {
-  const [isExporting, setIsExporting] = useState(false);
+  const [phase, setPhase] = useState<ExportPhase>("idle");
   const [exportProgress, setExportProgress] = useState(0);
-  const [exportDone, setExportDone] = useState(false);
+
+  const isExporting = phase === "encoding" || phase === "uploading";
+  const exportDone = phase === "done";
 
   const handleExportAndDownload = async () => {
     if (!ffmpegLoaded) { onToast("FFmpeg is still loading. Please wait."); return; }
     const videoClips = clips.filter((c) => isVideo(c.type));
     if (videoClips.length === 0) { onToast("No video clips to export.", "error"); return; }
 
-    setIsExporting(true);
+    setPhase("encoding");
     setExportProgress(2);
     await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
     const ffmpeg = ffmpegRef.current;
     const needsReencode = (c: TimelineClip) =>
       (c.playbackRate ?? 1) !== 1 || !!(c.effects?.rotate) || !!(c.effects?.flipH) || !!(c.effects?.flipV);
+
+    let blob: Blob | null = null;
 
     try {
       for (let i = 0; i < videoClips.length; i++) {
@@ -83,10 +90,10 @@ export function useExport({ ffmpegRef, ffmpegLoaded, clips, onToast }: Props) {
 
       setExportProgress(97);
       const data = await ffmpeg.readFile(finalFile);
-      const blob = new Blob([data instanceof Uint8Array ? Uint8Array.from(data) : new Uint8Array()], { type: "video/mp4" });
-      const blobUrl = URL.createObjectURL(blob);
-      setExportProgress(100);
+      blob = new Blob([data instanceof Uint8Array ? data : new Uint8Array()], { type: "video/mp4" });
 
+      // 로컬 다운로드
+      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = blobUrl;
       a.download = "makery_video.mp4";
@@ -94,16 +101,32 @@ export function useExport({ ffmpegRef, ffmpegLoaded, clips, onToast }: Props) {
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
-      setExportDone(true);
+
+      setExportProgress(100);
+
+      // 서버 업로드
+      setPhase("uploading");
+      const token = getToken();
+      if (token && blob) {
+        const formData = new FormData();
+        formData.append("file", blob, "makery_video.mp4");
+        await fetch("/api/v1/uploads", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+      }
+
+      setPhase("done");
     } catch (e) {
       console.error("Export failed:", e);
-      onToast("Failed to export video. Please try again.", "error");
-      setIsExporting(false);
+      onToast("영상 내보내기에 실패했습니다. 다시 시도해주세요.", "error");
+      setPhase("idle");
       setExportProgress(0);
     }
   };
 
-  const resetExport = () => { setExportDone(false); setIsExporting(false); setExportProgress(0); };
+  const resetExport = () => { setPhase("idle"); setExportProgress(0); };
 
-  return { isExporting, exportProgress, exportDone, handleExportAndDownload, resetExport };
+  return { isExporting, exportProgress, exportDone, phase, handleExportAndDownload, resetExport };
 }

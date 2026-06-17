@@ -20,8 +20,8 @@ export function useAuth() {
 
   const logout = () => {
     clearToken();
-    queryClient.removeQueries({ queryKey: ["auth"] });
-    navigate("/login");
+    queryClient.clear();
+    navigate("/login", { replace: true });
   };
 
   return {
