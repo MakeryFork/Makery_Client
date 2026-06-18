@@ -35,7 +35,7 @@ export default function PostDetailModal({ post, open, onOpenChange, isPurchased 
   const [buyError, setBuyError] = useState("");
   const [purchased, setPurchased] = useState(false);
 
-  const isOwner = user?.id === post?.author?.id;
+  const isOwner = !!(user?.id && post?.author?.id && user.id === post.author.id);
   const showBuyerContent = isPurchased || purchased;
 
   const { data: buyerContent } = useBuyerContent(showBuyerContent ? post?.id ?? null : null);
@@ -139,10 +139,14 @@ export default function PostDetailModal({ post, open, onOpenChange, isPurchased 
                     {isBuying ? "Processing..." : "Buy Now"}
                   </button>
                 )}
-                {isOwner && post.videoProjectId && (
+                {isOwner && (
                   <button
                     onClick={() => {
-                      navigate("/create/editor/studio", { state: { projectId: post.videoProjectId } });
+                      if (post.videoProjectId) {
+                        navigate("/create/editor", { state: { projectId: post.videoProjectId } });
+                      } else {
+                        navigate("/create/editor");
+                      }
                       onOpenChange(false);
                     }}
                     className="shrink-0 px-5 py-2 rounded-xl border-2 border-[#FFCA1D] text-[#FFCA1D] font-paperlogy text-sm font-semibold hover:bg-[#FFCA1D]/10 transition-colors"

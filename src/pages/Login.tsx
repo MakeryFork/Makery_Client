@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { getToken } from "@/lib/api";
 
 export default function Login() {
-  const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000/api/v1";
+  const apiUrl = import.meta.env.VITE_API_URL ?? "https://makeryserver-production.up.railway.app/api/v1";
   const [loading, setLoading] = useState<string | null>(null);
   const navigate = useNavigate();
 

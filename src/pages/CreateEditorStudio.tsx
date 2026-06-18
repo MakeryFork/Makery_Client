@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Crop, ImagePlus, Maximize2, Music, Redo2, Scissors, Sparkles, Type, Undo2, VolumeX, CircleGauge, Play, Pause } from "lucide-react";
+import { ChevronRight, Crop, ImagePlus, Maximize2, Music, Plus, Redo2, Scissors, Sparkles, Type, Undo2, VolumeX, CircleGauge, X, Play, Pause } from "lucide-react";
 import type { EditorStudioLocationState } from "./CreateEditorMediaPicker";
 import ExportProgressModal from "@/components/ExportProgressModal";
+import { uploadFile } from "@/lib/api";
 import { ToastNotification } from "@/components/editor/ToastNotification";
 import { CropOverlay } from "@/components/editor/CropOverlay";
 import { DraggableText } from "@/components/editor/DraggableText";
@@ -24,6 +25,7 @@ export default function CreateEditorStudio() {
   const state = location.state as EditorStudioLocationState | undefined;
   const initialClips = state?.clips ?? [];
   const templateSources = state?.templateSources;
+  const isBuyerMode = !!templateSources;
 
   // ─── state ──────────────────────────────────────────────────────────────────
   const [clips, setClips] = useState<TimelineClip[]>(() =>
@@ -55,6 +57,18 @@ export default function CreateEditorStudio() {
   const [isSpeedOpen, setIsSpeedOpen] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+  const [editorTab, setEditorTab] = useState<"public" | "buyers">("public");
+  // Public tab post form
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [price, setPrice] = useState(0);
+  const [details, setDetails] = useState<string[]>([""]);
+  const [savedPostId, setSavedPostId] = useState<number | undefined>();
+  // Public tab media (separate from editor clips)
+  const [publicFiles, setPublicFiles] = useState<File[]>([]);
+  const [publicPreviewUrls, setPublicPreviewUrls] = useState<string[]>([]);
+  const [publicCurrentIdx, setPublicCurrentIdx] = useState(0); // eslint-disable-line
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
 
   const showToast = (message: string, type: ToastType = "info") => setToast({ message, type });
 
@@ -64,6 +78,8 @@ export default function CreateEditorStudio() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const descRef = useRef<HTMLTextAreaElement>(null);
+  const publicFileInputRef = useRef<HTMLInputElement>(null);
 
   // ─── derived ─────────────────────────────────────────────────────────────────
   const videoMaxDuration = Math.ceil(clips.reduce((acc, c) => {
@@ -80,7 +96,22 @@ export default function CreateEditorStudio() {
   const { ffmpegRef, ffmpegLoaded, loadFFmpeg } = useFFmpeg(showToast);
   const { isPlaying, setIsPlaying, currentTime, currentTimeRef, togglePlay, handleScroll } = usePlayback(maxDuration, timelineRef);
   const { thumbnails } = useThumbnails(clips, PIXELS_PER_SECOND);
-  const { isExporting, exportProgress, exportDone, phase, handleExportAndDownload, resetExport } = useExport({ ffmpegRef, ffmpegLoaded, clips, onToast: showToast });
+  const [savedProjectId, setSavedProjectId] = useState<number | undefined>(state?.projectId);
+  const { isExporting, exportProgress, exportDone, phase, handleExportAndDownload, resetExport } = useExport({
+    ffmpegRef, ffmpegLoaded, clips, texts, audios,
+    videoProjectId: savedProjectId,
+    postId: savedPostId,
+    postData: !isBuyerMode && title.trim() ? {
+      title: title.trim(),
+      description: description.trim(),
+      price,
+      thumbnailUrl: thumbnailUrl ?? undefined,
+      details: details.filter((d) => d.trim()).map((content, sortOrder) => ({ content, sortOrder })),
+    } : undefined,
+    onToast: showToast,
+    onProjectSaved: (id) => setSavedProjectId(id),
+    onPostSaved: (id) => setSavedPostId(id),
+  });
 
   useEditorKeyboard({
     selectedClipIndex, selectedTextId, selectedAudioId,
@@ -96,6 +127,7 @@ export default function CreateEditorStudio() {
 
   // ─── effects ─────────────────────────────────────────────────────────────────
   useEffect(() => { loadFFmpeg(); if (!clips.length) navigate("/create/editor", { replace: true }); }, []);
+  useEffect(() => { if (exportDone) { const t = setTimeout(() => navigate(isBuyerMode ? "/source" : "/create", { replace: true }), 1500); return () => clearTimeout(t); } }, [exportDone]);
 
   useEffect(() => {
     const hasUnloaded = clips.some((c) => isVideo(c.type) && c.duration === 0);
@@ -128,6 +160,20 @@ export default function CreateEditorStudio() {
   useEffect(() => {
     return () => { audioRefs.current.forEach((el) => { el.pause(); el.src = ""; }); };
   }, []);
+
+  useLayoutEffect(() => {
+    if (descRef.current) {
+      descRef.current.style.height = "auto";
+      descRef.current.style.height = descRef.current.scrollHeight + "px";
+    }
+  }, [description]);
+
+  useEffect(() => {
+    const firstImage = publicFiles.find((f) => f.type.startsWith("image/"));
+    if (firstImage) {
+      uploadFile(firstImage).then((res) => setThumbnailUrl(res.url)).catch(console.error);
+    }
+  }, [publicFiles]);
 
   // current clip at playhead
   let accumulated = 0, currentClipIndex = 0, offsetWithinClip = 0;
@@ -335,91 +381,234 @@ export default function CreateEditorStudio() {
       {toast && <ToastNotification message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       {/* Top bar */}
-      <header className="flex shrink-0 items-center justify-between px-4 py-3 sm:px-5">
+      <header className="flex shrink-0 items-center justify-between px-4 py-3 sm:px-5 border-b border-[#F0F0F0]">
         <Link to="/create/editor" className="flex h-10 w-10 items-center justify-center text-[#BDBDBD] transition-colors hover:text-[#333]" aria-label="Back">
           <span className="font-light text-3xl leading-none">×</span>
         </Link>
-        <button type="button" disabled={isExporting} onClick={handleExportAndDownload} className="font-paperlogy text-base font-bold tracking-wide text-[#FFCA1D] disabled:opacity-50 sm:text-lg">
-          upload
-        </button>
-      </header>
-
-      {/* Preview */}
-      <div className="flex min-h-0 flex-1 flex-col bg-white">
-        <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-4 sm:px-8 sm:py-6">
-          <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-black/5">
-            {preview && isVideo(preview.type) ? (
-              <video ref={videoRef} src={preview.url} className="h-full w-full object-contain drop-shadow-sm transition-all" style={cropStyle(preview)} controls={false} playsInline crossOrigin="anonymous" onEnded={() => setIsPlaying(false)} />
-            ) : preview ? (
-              <img src={preview.url} alt={preview.name} className="h-full w-full object-contain drop-shadow-sm transition-all" style={cropStyle(preview)} draggable={false} crossOrigin="anonymous" />
-            ) : null}
-            {isCropping && preview && <CropOverlay initialCrop={preview.crop} onSave={handleApplyCrop} onCancel={() => setIsCropping(false)} />}
-            {texts.filter((t) => currentTime >= t.startTime && currentTime <= t.endTime).map((t) => (
-              <DraggableText key={t.id} textItem={t} onUpdate={(updated) => setTexts((prev) => prev.map((x) => x.id === t.id ? updated : x))} />
-            ))}
-          </div>
-        </div>
-
-        {/* Transport controls */}
-        <div className="flex shrink-0 items-center justify-between px-4 py-3 sm:px-8">
-          <button type="button" className="flex h-10 w-10 items-center justify-start text-[#666] transition-colors hover:text-black" aria-label="Full screen">
-            <Maximize2 className="h-5 w-5" strokeWidth={1.5} />
-          </button>
-          <button type="button" onClick={togglePlay} className="flex h-10 w-10 items-center justify-center text-[#666] transition-colors hover:text-black" aria-label={isPlaying ? "Pause" : "Play"}>
-            {isPlaying ? <Pause className="h-6 w-6" strokeWidth={1} /> : <Play className="h-6 w-6" strokeWidth={1} />}
-          </button>
-          <div className="flex items-center gap-4 text-[#666]">
-            <button type="button" className="transition-colors hover:text-black" aria-label="Undo"><Undo2 className="h-5 w-5" strokeWidth={1.5} /></button>
-            <button type="button" className="transition-colors hover:text-black" aria-label="Redo"><Redo2 className="h-5 w-5" strokeWidth={1.5} /></button>
-          </div>
-        </div>
-      </div>
-
-      {/* Timeline */}
-      <div className="relative flex shrink-0 flex-1 min-h-0 border-t border-[#E5E8EB] bg-[#F4F5F7]">
-        <input type="file" ref={fileInputRef} style={{ display: "none" }} accept="video/*,image/*" multiple onChange={handleAddMedia} />
-        <div className="absolute bottom-0 top-0 left-1/2 z-20 w-[1.5px] bg-black" aria-hidden />
-        <div ref={timelineRef} onScroll={handleScroll} className="w-full flex flex-col overflow-x-auto overflow-y-hidden scroll-smooth" style={{ scrollBehavior: isPlaying ? "auto" : "smooth" }}>
-          {/* Ruler */}
-          <div className="border-b border-[#DDE2E8] px-0 py-3">
-            <div className="flex min-w-max font-mono text-xs text-[#8A9399]">
-              <div className="w-[50vw] shrink-0" />
-              {Array.from({ length: maxDuration + 1 }).map((_, i) => (
-                <span key={i} className="w-32 shrink-0">{formatTime(i)}</span>
-              ))}
-              <div className="w-[50vw] shrink-0" />
-            </div>
-          </div>
-
-          <div className="px-0 py-0 min-w-max pb-10">
-            <VideoTrack clips={clips} selectedClipIndex={selectedClipIndex} thumbnails={thumbnails} pixelsPerSecond={PIXELS_PER_SECOND} onSelectClip={(i) => { setSelectedClipIndex(i); setSelectedTextId(null); }} onStartTrim={startTrim} />
-            <TextTrack texts={texts} selectedTextId={selectedTextId} maxDuration={maxDuration} pixelsPerSecond={PIXELS_PER_SECOND} onSelectText={(id) => { setSelectedClipIndex(null); setSelectedTextId(id); }} onAddText={handleAddText} onStartTextTrim={startTextTrim} />
-            <AudioTrack audios={audios} selectedAudioId={selectedAudioId} maxDuration={maxDuration} pixelsPerSecond={PIXELS_PER_SECOND} isMuted={isMuted} audioInputRef={audioInputRef} audioRefs={audioRefs} onSelectAudio={setSelectedAudioId} onStartAudioTrim={startAudioTrim} onAddAudio={handleAddAudio} />
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom toolbar */}
-      <div className="border-t border-[#DDE2E8] bg-white px-2 py-3 sm:px-4 sm:py-4 relative">
-        {isSpeedOpen && (
-          <div className="absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 bg-white rounded-xl shadow-lg border border-[#E5E8EB] p-3 flex gap-2 items-center z-50">
-            <span className="text-xs font-bold text-[#888] mr-1">Speed</span>
-            {[0.5, 1, 1.25, 1.5, 2].map((rate) => (
-              <button key={rate} onClick={() => handleApplySpeed(rate)} className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${(clips[currentClipIndex]?.playbackRate || 1) === rate ? "bg-[#FFCA1D] text-[#333]" : "bg-[#F4F5F7] text-[#666] hover:bg-[#E5E8EB]"}`}>
-                {rate}x
+        {/* Tabs - 창작자 모드에서만 표시 */}
+        {!isBuyerMode ? (
+          <div className="flex gap-6">
+            {(["public", "buyers"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setEditorTab(t)}
+                className={`font-paperlogy text-sm font-semibold pb-0.5 border-b-2 transition-colors ${
+                  editorTab === t ? "text-black border-black" : "text-[#9E9E9E] border-transparent"
+                }`}
+              >
+                {t === "public" ? "Public" : "For Buyers"}
               </button>
             ))}
           </div>
+        ) : (
+          <span className="font-paperlogy text-sm font-semibold text-[#333]">Video Editor</span>
         )}
-        <div className="mx-auto flex w-full justify-between gap-1 sm:gap-2">
-          {toolbar.map(({ icon: Icon, label }) => (
-            <button key={label} type="button" onClick={() => handleToolbarAction(label)} className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg py-1 transition-colors hover:bg-[#F5F5F5] ${label === "Mute" && isMuted ? "text-[#FFCA1D]" : "text-[#333]"}`}>
-              <Icon className="h-6 w-6 shrink-0 sm:h-7 sm:w-7" strokeWidth={1} />
-              <span className="truncate font-paperlogy text-xs font-medium sm:text-sm">{label}</span>
-            </button>
-          ))}
+        <button
+          type="button"
+          disabled={isExporting || (!isBuyerMode && !title.trim())}
+          onClick={handleExportAndDownload}
+          className="font-paperlogy text-base font-bold tracking-wide text-[#FFCA1D] disabled:opacity-50 sm:text-lg"
+        >
+          {isBuyerMode ? "save" : "upload"}
+        </button>
+      </header>
+
+      {/* Public tab: 창작자 모드에서만 표시 */}
+      {!isBuyerMode && editorTab === "public" && (
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* Left: public media upload (separate from editor clips) */}
+          <div className="w-1/2 border-r border-[#F0F0F0] flex flex-col p-6 gap-3">
+            <input
+              ref={publicFileInputRef}
+              type="file"
+              accept="video/*,image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const arr = Array.from(e.target.files ?? []);
+                if (!arr.length) return;
+                setPublicFiles((prev) => [...prev, ...arr]);
+                setPublicPreviewUrls((prev) => [...prev, ...arr.map((f) => URL.createObjectURL(f))]);
+              }}
+            />
+            {publicPreviewUrls.length === 0 ? (
+              <div
+                onClick={() => publicFileInputRef.current?.click()}
+                className="flex-1 rounded-xl border-2 border-dashed border-[#D8D8D8] flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-[#FFCA1D] transition-colors"
+              >
+                <Plus className="w-10 h-10 text-[#BDBDBD]" />
+                <p className="font-paperlogy text-sm text-[#9E9E9E]">Select videos and photos.</p>
+                <button type="button" className="px-5 py-2 bg-[#FFCA1D] text-white font-paperlogy text-sm font-semibold rounded-xl pointer-events-none">
+                  Open File
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="relative flex-1 min-h-0 rounded-xl overflow-hidden bg-[#F4F5F7]">
+                  {publicFiles[publicCurrentIdx]?.type.startsWith("video/") ? (
+                    <video src={publicPreviewUrls[publicCurrentIdx]} className="w-full h-full object-cover" controls playsInline />
+                  ) : (
+                    <img src={publicPreviewUrls[publicCurrentIdx]} alt="" className="w-full h-full object-cover" />
+                  )}
+                  {publicPreviewUrls.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setPublicCurrentIdx((i) => (i + 1) % publicPreviewUrls.length)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-white/80 rounded-full shadow hover:bg-white transition-colors"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => publicFileInputRef.current?.click()}
+                  className="shrink-0 w-full py-2.5 border-2 border-dashed border-[#D8D8D8] rounded-xl font-paperlogy text-sm text-[#9E9E9E] hover:border-[#FFCA1D] transition-colors flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" /> Add photo
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Right: form */}
+          <div className="w-1/2 p-6 space-y-5 overflow-y-auto">
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Enter a title"
+              className="w-full border-none outline-none font-paperlogy font-semibold text-2xl sm:text-3xl text-black placeholder:text-[#BDBDBD]"
+            />
+            <div>
+              <textarea
+                ref={descRef}
+                value={description}
+                onChange={(e) => { if (e.target.value.length <= 10000) setDescription(e.target.value); }}
+                placeholder="Description (optional)"
+                rows={3}
+                className="w-full resize-none border border-[#D8D8D8] rounded-md p-3 font-paperlogy text-sm text-black placeholder:text-[#BDBDBD] focus:border-[#FFCA1D] outline-none overflow-hidden"
+              />
+              <p className="text-right text-xs text-[#BDBDBD] font-paperlogy">{description.length}/10000</p>
+            </div>
+            <div>
+              <label className="font-paperlogy text-sm font-semibold text-black block mb-1">Price</label>
+              <input
+                type="number"
+                min={0}
+                value={price}
+                onChange={(e) => setPrice(Number(e.target.value))}
+                placeholder="0 = Free"
+                className="border border-[#D8D8D8] rounded-md px-3 py-2 font-paperlogy text-sm text-black focus:border-[#FFCA1D] outline-none w-40"
+              />
+            </div>
+            <div>
+              <label className="font-paperlogy text-sm font-semibold text-black block mb-2">Details</label>
+              <div className="space-y-2">
+                {details.map((d, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      value={d}
+                      onChange={(e) => { const next = [...details]; next[i] = e.target.value; setDetails(next); }}
+                      placeholder={`Detail ${i + 1}`}
+                      className="flex-1 border border-[#D8D8D8] rounded-md px-3 py-2 font-paperlogy text-sm text-black focus:border-[#FFCA1D] outline-none"
+                    />
+                    {details.length > 1 && (
+                      <button type="button" onClick={() => setDetails(details.filter((_, j) => j !== i))} className="p-1 text-[#BDBDBD] hover:text-red-400">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={() => setDetails([...details, ""])} className="mt-2 flex items-center gap-1 text-xs text-[#FFCA1D] font-paperlogy font-semibold hover:opacity-80">
+                <Plus className="w-3 h-3" /> Add
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* 비디오 에디터: 구매자 모드이거나 창작자 모드의 For Buyers 탭 */}
+      {(isBuyerMode || editorTab === "buyers") && (
+        <>
+          <div className="flex min-h-0 flex-1 flex-col bg-white">
+            <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-4 sm:px-8 sm:py-6">
+              <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-black/5">
+                {preview && isVideo(preview.type) ? (
+                  <video ref={videoRef} src={preview.url} className="h-full w-full object-contain drop-shadow-sm transition-all" style={cropStyle(preview)} controls={false} playsInline crossOrigin="anonymous" onEnded={() => setIsPlaying(false)} />
+                ) : preview ? (
+                  <img src={preview.url} alt={preview.name} className="h-full w-full object-contain drop-shadow-sm transition-all" style={cropStyle(preview)} draggable={false} crossOrigin="anonymous" />
+                ) : null}
+                {isCropping && preview && <CropOverlay initialCrop={preview.crop} onSave={handleApplyCrop} onCancel={() => setIsCropping(false)} />}
+                {texts.filter((t) => currentTime >= t.startTime && currentTime <= t.endTime).map((t) => (
+                  <DraggableText key={t.id} textItem={t} onUpdate={(updated) => setTexts((prev) => prev.map((x) => x.id === t.id ? updated : x))} />
+                ))}
+              </div>
+            </div>
+
+            {/* Transport controls */}
+            <div className="flex shrink-0 items-center justify-between px-4 py-3 sm:px-8">
+              <button type="button" className="flex h-10 w-10 items-center justify-start text-[#666] transition-colors hover:text-black" aria-label="Full screen">
+                <Maximize2 className="h-5 w-5" strokeWidth={1.5} />
+              </button>
+              <button type="button" onClick={togglePlay} className="flex h-10 w-10 items-center justify-center text-[#666] transition-colors hover:text-black" aria-label={isPlaying ? "Pause" : "Play"}>
+                {isPlaying ? <Pause className="h-6 w-6" strokeWidth={1} /> : <Play className="h-6 w-6" strokeWidth={1} />}
+              </button>
+              <div className="flex items-center gap-4 text-[#666]">
+                <button type="button" className="transition-colors hover:text-black" aria-label="Undo"><Undo2 className="h-5 w-5" strokeWidth={1.5} /></button>
+                <button type="button" className="transition-colors hover:text-black" aria-label="Redo"><Redo2 className="h-5 w-5" strokeWidth={1.5} /></button>
+              </div>
+            </div>
+          </div>
+
+          {/* Timeline */}
+          <div className="relative flex shrink-0 flex-1 min-h-0 border-t border-[#E5E8EB] bg-[#F4F5F7]">
+            <input type="file" ref={fileInputRef} style={{ display: "none" }} accept="video/*,image/*" multiple onChange={handleAddMedia} />
+            <div className="absolute bottom-0 top-0 left-1/2 z-20 w-[1.5px] bg-black" aria-hidden />
+            <div ref={timelineRef} onScroll={handleScroll} className="w-full flex flex-col overflow-x-auto overflow-y-hidden scroll-smooth" style={{ scrollBehavior: isPlaying ? "auto" : "smooth" }}>
+              {/* Ruler */}
+              <div className="border-b border-[#DDE2E8] px-0 py-3">
+                <div className="flex min-w-max font-mono text-xs text-[#8A9399]">
+                  <div className="w-[50vw] shrink-0" />
+                  {Array.from({ length: maxDuration + 1 }).map((_, i) => (
+                    <span key={i} className="w-32 shrink-0">{formatTime(i)}</span>
+                  ))}
+                  <div className="w-[50vw] shrink-0" />
+                </div>
+              </div>
+
+              <div className="px-0 py-0 min-w-max pb-10">
+                <VideoTrack clips={clips} selectedClipIndex={selectedClipIndex} thumbnails={thumbnails} pixelsPerSecond={PIXELS_PER_SECOND} onSelectClip={(i) => { setSelectedClipIndex(i); setSelectedTextId(null); }} onStartTrim={startTrim} />
+                <TextTrack texts={texts} selectedTextId={selectedTextId} maxDuration={maxDuration} pixelsPerSecond={PIXELS_PER_SECOND} onSelectText={(id) => { setSelectedClipIndex(null); setSelectedTextId(id); }} onAddText={handleAddText} onStartTextTrim={startTextTrim} />
+                <AudioTrack audios={audios} selectedAudioId={selectedAudioId} maxDuration={maxDuration} pixelsPerSecond={PIXELS_PER_SECOND} isMuted={isMuted} audioInputRef={audioInputRef} audioRefs={audioRefs} onSelectAudio={setSelectedAudioId} onStartAudioTrim={startAudioTrim} onAddAudio={handleAddAudio} />
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom toolbar */}
+          <div className="border-t border-[#DDE2E8] bg-white px-2 py-3 sm:px-4 sm:py-4 relative">
+            {isSpeedOpen && (
+              <div className="absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 bg-white rounded-xl shadow-lg border border-[#E5E8EB] p-3 flex gap-2 items-center z-50">
+                <span className="text-xs font-bold text-[#888] mr-1">Speed</span>
+                {[0.5, 1, 1.25, 1.5, 2].map((rate) => (
+                  <button key={rate} onClick={() => handleApplySpeed(rate)} className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${(clips[currentClipIndex]?.playbackRate || 1) === rate ? "bg-[#FFCA1D] text-[#333]" : "bg-[#F4F5F7] text-[#666] hover:bg-[#E5E8EB]"}`}>
+                    {rate}x
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="mx-auto flex w-full justify-between gap-1 sm:gap-2">
+              {toolbar.map(({ icon: Icon, label }) => (
+                <button key={label} type="button" onClick={() => handleToolbarAction(label)} className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg py-1 transition-colors hover:bg-[#F5F5F5] ${label === "Mute" && isMuted ? "text-[#FFCA1D]" : "text-[#333]"}`}>
+                  <Icon className="h-6 w-6 shrink-0 sm:h-7 sm:w-7" strokeWidth={1} />
+                  <span className="truncate font-paperlogy text-xs font-medium sm:text-sm">{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

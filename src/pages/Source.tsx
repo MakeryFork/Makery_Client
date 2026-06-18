@@ -1,150 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  CheckCircle2,
-  Download,
-  Music,
-  Sparkles,
-  Type,
-  Scissors,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
+import { Download } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import PostDetailModal from "@/components/PostDetailModal";
 import { useAuth } from "@/hooks/useAuth";
-import { useMyPurchases, usePurchaseSources } from "@/hooks/usePurchases";
+import { useMyPurchases } from "@/hooks/usePurchases";
 import { api } from "@/lib/api";
-import type { Post, SourcesResponse, TemplateSources } from "@/lib/types";
+import type { Post, SourcesResponse } from "@/lib/types";
 
-interface DisplaySource {
-  id: string;
-  label: string;
-  category: "Effect" | "Text" | "Audio" | "Animation" | "Split";
-  timeLabel?: string;
-  downloadUrl?: string;
-}
-
-function toDisplaySources(ts: TemplateSources): DisplaySource[] {
-  const items: DisplaySource[] = [];
-  ts.effects?.forEach((e, i) =>
-    items.push({
-      id: `e${i}`,
-      label: e.filter ? `Filter: ${e.filter}` : `Effect (clip ${e.clipId})`,
-      category: "Effect",
-    })
-  );
-  ts.texts?.forEach((t) =>
-    items.push({
-      id: t.id,
-      label: `"${t.text.length > 24 ? t.text.slice(0, 24) + "…" : t.text}"`,
-      category: "Text",
-      timeLabel: `${t.startTime.toFixed(1)}s – ${t.endTime.toFixed(1)}s`,
-    })
-  );
-  ts.audios?.forEach((a) =>
-    items.push({
-      id: a.id,
-      label: a.name,
-      category: "Audio",
-      timeLabel: `${a.startTime.toFixed(1)}s – ${a.endTime.toFixed(1)}s`,
-      downloadUrl: a.url,
-    })
-  );
-  ts.animations?.forEach((a, i) =>
-    items.push({
-      id: `anim${i}`,
-      label: a.type,
-      category: "Animation",
-      timeLabel: `${a.startTime.toFixed(1)}s – ${a.endTime.toFixed(1)}s`,
-    })
-  );
-  ts.splits?.forEach((s, i) =>
-    items.push({
-      id: `split${i}`,
-      label: `Split at ${s.time.toFixed(1)}s (clip ${s.clipIndex})`,
-      category: "Split",
-    })
-  );
-  return items;
-}
-
-function SourceRow({ source }: { source: DisplaySource }) {
-  const Icon =
-    source.category === "Audio"
-      ? Music
-      : source.category === "Animation"
-      ? Sparkles
-      : source.category === "Text"
-      ? Type
-      : source.category === "Split"
-      ? Scissors
-      : CheckCircle2;
-
-  const bg =
-    source.category === "Audio"
-      ? "bg-[#F0F8F0]"
-      : source.category === "Animation"
-      ? "bg-[#FFF9E6]"
-      : source.category === "Text"
-      ? "bg-[#F0F4FF]"
-      : "bg-[#F4F5F7]";
-
-  const iconColor =
-    source.category === "Audio"
-      ? "text-[#4CAF50]"
-      : source.category === "Animation"
-      ? "text-[#FFCA1D]"
-      : source.category === "Text"
-      ? "text-[#5B8FF9]"
-      : "text-[#888]";
-
-  const handleDownload = async () => {
-    if (!source.downloadUrl) return;
-    try {
-      const res = await fetch(source.downloadUrl);
-      const blob = await res.blob();
-      const dlUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = dlUrl;
-      a.download = source.label;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(dlUrl), 2000);
-    } catch {
-      // ignore
-    }
-  };
-
-  return (
-    <li className={`flex items-center gap-2 rounded-lg px-3 py-2 ${bg}`}>
-      <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} strokeWidth={1.5} />
-      <span className="flex-1 truncate font-paperlogy text-xs text-[#555]">
-        {source.label}
-      </span>
-      {source.timeLabel && (
-        <span className="shrink-0 font-paperlogy text-[10px] text-[#BDBDBD]">
-          {source.timeLabel}
-        </span>
-      )}
-      {source.downloadUrl ? (
-        <button
-          type="button"
-          onClick={handleDownload}
-          className={`flex h-6 w-6 items-center justify-center rounded-full bg-black/5 ${iconColor} transition-colors hover:bg-black/10`}
-        >
-          <Download className="h-3 w-3" strokeWidth={2} />
-        </button>
-      ) : (
-        <CheckCircle2
-          className="h-4 w-4 shrink-0 text-[#BDBDBD]"
-          strokeWidth={1.5}
-        />
-      )}
-    </li>
-  );
-}
 
 function SourceCard({
   post,
@@ -154,22 +17,17 @@ function SourceCard({
   onSelect: () => void;
 }) {
   const navigate = useNavigate();
-  const [showSources, setShowSources] = useState(false);
   const [isOpeningEditor, setIsOpeningEditor] = useState(false);
-
-  const { data: sourcesData, isLoading: isLoadingSources } = usePurchaseSources(
-    showSources && post.videoProjectId ? post.id : null
-  );
-
-  const displaySources: DisplaySource[] =
-    sourcesData ? toDisplaySources(sourcesData.templateSources) : [];
 
   const handleOpenInEditor = async () => {
     setIsOpeningEditor(true);
     try {
       const data = await api.get<SourcesResponse>(`/purchases/${post.id}/sources`);
       navigate("/create/editor", {
-        state: { templateSources: data.templateSources },
+        state: {
+          templateSources: data.templateSources,
+          projectId: data.videoProjectId,
+        },
       });
     } catch {
       navigate("/create/editor", { state: {} });
@@ -211,46 +69,6 @@ function SourceCard({
 
       {post.videoProjectId && (
         <div className="flex flex-col gap-1.5">
-          <button
-            type="button"
-            onClick={() => setShowSources((v) => !v)}
-            className="flex items-center justify-between rounded-lg border border-[#E5E8EB] bg-white px-3 py-2 font-paperlogy text-xs font-semibold text-[#555] transition-colors hover:bg-[#F4F5F7]"
-          >
-            <span className="flex items-center gap-1.5">
-              <Download className="h-3.5 w-3.5" strokeWidth={2} />
-              {isLoadingSources
-                ? "Loading..."
-                : showSources && displaySources.length > 0
-                ? `Sources (${displaySources.length})`
-                : "View Sources"}
-            </span>
-            {showSources ? (
-              <ChevronUp className="h-3.5 w-3.5 text-[#BDBDBD]" />
-            ) : (
-              <ChevronDown className="h-3.5 w-3.5 text-[#BDBDBD]" />
-            )}
-          </button>
-
-          {showSources && (
-            <div className="rounded-xl border border-[#E5E8EB] bg-white px-3 pb-2">
-              {isLoadingSources ? (
-                <div className="flex justify-center py-4">
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#FFCA1D] border-t-transparent" />
-                </div>
-              ) : displaySources.length === 0 ? (
-                <p className="py-3 text-center font-paperlogy text-xs text-[#BDBDBD]">
-                  No source assets.
-                </p>
-              ) : (
-                <ul className="flex flex-col gap-2 py-2">
-                  {displaySources.map((s) => (
-                    <SourceRow key={s.id} source={s} />
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-
           <button
             type="button"
             onClick={handleOpenInEditor}

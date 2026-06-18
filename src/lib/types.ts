@@ -193,7 +193,7 @@ export interface SourcesResponse {
   postId: number;
   videoProjectId: number;
   post: { title: string; thumbnailUrl: string | null };
-  clipSlots: ClipSlot[];
+  clipSlots?: ClipSlot[];
   templateSources: TemplateSources;
 }
 

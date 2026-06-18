@@ -19,11 +19,14 @@ export function useThumbnails(clips: TimelineClip[], pixelsPerSecond: number) {
       video.playsInline = true;
       video.preload = "auto";
 
+      // loadeddata까지 기다려야 첫 프레임 데이터가 실제로 있음
       await new Promise<void>((resolve) => {
-        video.onloadedmetadata = () => resolve();
-        video.onerror = () => resolve();
+        if (video.readyState >= 2) { resolve(); return; }
+        video.addEventListener("loadeddata", () => resolve(), { once: true });
+        video.addEventListener("error", () => resolve(), { once: true });
         video.load();
       });
+
       if (!active) return;
       if (!video.videoWidth || !video.videoHeight) return;
 
@@ -40,12 +43,19 @@ export function useThumbnails(clips: TimelineClip[], pixelsPerSecond: number) {
       for (let i = 0; i < count; i++) {
         if (!active) break;
 
-        video.currentTime = i * (thumbWidth / pixelsPerSecond);
+        const seekTime = Math.min((i * thumbWidth) / pixelsPerSecond, c.duration - 0.05);
+        video.currentTime = seekTime;
+
         await new Promise<void>((resolve) => {
-          const onSeeked = () => { video.removeEventListener("seeked", onSeeked); resolve(); };
+          const onSeeked = () => {
+            video.removeEventListener("seeked", onSeeked);
+            // seeked 직후에는 프레임이 아직 미렌더링일 수 있어서 rAF 두 번 대기
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+          };
           video.addEventListener("seeked", onSeeked);
-          setTimeout(resolve, 1000);
+          setTimeout(resolve, 2000);
         });
+
         if (!active) break;
 
         try {
@@ -59,7 +69,7 @@ export function useThumbnails(clips: TimelineClip[], pixelsPerSecond: number) {
             return { ...prev, [c.url]: arr };
           });
         } catch {
-          // canvas tainted or draw failed — skip this frame
+          // canvas tainted or draw failed — skip
         }
       }
     });

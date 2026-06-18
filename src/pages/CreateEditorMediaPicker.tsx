@@ -18,7 +18,9 @@ export interface EditorStudioLocationState {
 export default function CreateEditorMediaPicker() {
   const navigate = useNavigate();
   const location = useLocation();
-  const incomingTemplates = (location.state as EditorStudioLocationState | null)?.templateSources;
+  const incomingState = location.state as EditorStudioLocationState | null;
+  const incomingTemplates = incomingState?.templateSources;
+  const incomingProjectId = incomingState?.projectId;
   const [clips, setClips] = useState<EditorStudioClip[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -56,6 +58,7 @@ export default function CreateEditorMediaPicker() {
     if (clips.length === 0) return;
     const state: EditorStudioLocationState = { clips };
     if (incomingTemplates) state.templateSources = incomingTemplates;
+    if (incomingProjectId) state.projectId = incomingProjectId;
     navigate("/create/editor/studio", { state });
   };
 

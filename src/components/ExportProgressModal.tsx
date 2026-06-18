@@ -24,7 +24,7 @@ export default function ExportProgressModal({ isExporting, progress, isDone, pha
   const dashOffset = circumference - (progress / 100) * circumference;
 
   const phaseLabel =
-    phase === "uploading" ? "서버에 업로드 중..." :
+    phase === "saving" ? "편집 데이터 저장 중..." :
     progress < 40 ? "파일 준비 중..." :
     progress < 90 ? "인코딩 중..." : "마무리 중...";
 
@@ -46,7 +46,7 @@ export default function ExportProgressModal({ isExporting, progress, isDone, pha
         <div className="relative flex h-28 w-28 items-center justify-center">
           <svg className="-rotate-90 absolute inset-0" width="112" height="112" viewBox="0 0 112 112">
             <circle cx="56" cy="56" r="40" fill="none" stroke="#F0F0F0" strokeWidth="7" />
-            {phase === "uploading" ? (
+            {phase === "saving" ? (
               /* 업로드 중: 전체 채운 상태로 스핀 */
               <circle
                 cx="56" cy="56" r="40"
@@ -79,7 +79,7 @@ export default function ExportProgressModal({ isExporting, progress, isDone, pha
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#FFCA1D]">
                 <Check className="h-6 w-6 text-white" strokeWidth={3} />
               </div>
-            ) : phase === "uploading" ? (
+            ) : phase === "saving" ? (
               <Upload className="h-8 w-8 text-[#FFCA1D]" strokeWidth={1.5} />
             ) : (
               <span className="font-paperlogy text-2xl font-bold text-[#333]">
@@ -98,14 +98,14 @@ export default function ExportProgressModal({ isExporting, progress, isDone, pha
         ) : (
           <div className="flex flex-col items-center gap-1 text-center">
             <p className="font-paperlogy text-base font-bold text-[#222]">
-              {phase === "uploading" ? "서버 업로드 중..." : "영상 처리 중..."}
+              {phase === "saving" ? "서버 업로드 중..." : "영상 처리 중..."}
             </p>
             <p className="font-paperlogy text-xs text-[#999]">잠시만 기다려 주세요</p>
           </div>
         )}
 
         {/* 진행 바 (인코딩 중에만) */}
-        {!isDone && phase !== "uploading" && (
+        {!isDone && phase !== "saving" && (
           <div className="w-full">
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#F0F0F0]">
               <div
@@ -120,7 +120,7 @@ export default function ExportProgressModal({ isExporting, progress, isDone, pha
         )}
 
         {/* 업로드 중: 스피너 바 */}
-        {!isDone && phase === "uploading" && (
+        {!isDone && phase === "saving" && (
           <div className="w-full overflow-hidden rounded-full bg-[#F0F0F0] h-1.5">
             <div className="h-full bg-[#FFCA1D] rounded-full animate-pulse" style={{ width: "100%" }} />
           </div>
