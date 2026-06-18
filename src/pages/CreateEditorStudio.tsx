@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Crop, ImagePlus, Maximize2, Music, Redo2, Scissors, Sparkles, Type, Undo2, VolumeX, CircleGauge, Play, Pause } from "lucide-react";
 import type { EditorStudioLocationState } from "./CreateEditorMediaPicker";
-import type { PurchaseSource } from "@/lib/types";
 import ExportProgressModal from "@/components/ExportProgressModal";
 import { ToastNotification } from "@/components/editor/ToastNotification";
 import { CropOverlay } from "@/components/editor/CropOverlay";
@@ -24,7 +23,7 @@ export default function CreateEditorStudio() {
   const location = useLocation();
   const state = location.state as EditorStudioLocationState | undefined;
   const initialClips = state?.clips ?? [];
-  const templateSources: PurchaseSource[] = state?.templateSources ?? [];
+  const templateSources = state?.templateSources;
 
   // ─── state ──────────────────────────────────────────────────────────────────
   const [clips, setClips] = useState<TimelineClip[]>(() =>
@@ -35,16 +34,16 @@ export default function CreateEditorStudio() {
     }))
   );
   const [texts, setTexts] = useState<OverlayText[]>(() =>
-    templateSources.filter((s) => s.type === "animation" && s.properties?.text).map((s) => ({
-      id: `tpl-${s.startTime}`, text: String(s.properties.text ?? ""),
-      x: Number(s.properties.x ?? 0), y: Number(s.properties.y ?? 0),
+    (templateSources?.texts ?? []).map((s) => ({
+      id: s.id, text: s.text,
+      x: s.x, y: s.y,
       startTime: s.startTime, endTime: s.endTime,
     }))
   );
   const [audios, setAudios] = useState<AudioClip[]>(() =>
-    templateSources.filter((s) => s.type === "audio" && s.properties?.url).map((s) => ({
-      id: `tpl-audio-${s.startTime}`, url: String(s.properties.url),
-      name: String(s.properties.name ?? "Audio"), duration: s.endTime - s.startTime,
+    (templateSources?.audios ?? []).map((s) => ({
+      id: s.id, url: s.url,
+      name: s.name, duration: s.endTime - s.startTime,
       startTime: s.startTime, endTime: s.endTime,
     }))
   );
@@ -171,11 +170,11 @@ export default function CreateEditorStudio() {
   }, [currentTime, isPlaying, audios, isMuted]);
 
   // ─── handlers ────────────────────────────────────────────────────────────────
-  const templateEffects = templateSources.filter((s) => s.type === "effect").map((s) => ({
-    filter: (s.properties.filter as FilterPreset) ?? "none",
-    rotate: (Number(s.properties.rotate ?? 0)) as 0 | 90 | 180 | 270,
-    flipH: Boolean(s.properties.flipH ?? false),
-    flipV: Boolean(s.properties.flipV ?? false),
+  const templateEffects = (templateSources?.effects ?? []).map((s) => ({
+    filter: (s.filter as FilterPreset) ?? "none",
+    rotate: (Number(s.rotate ?? 0)) as 0 | 90 | 180 | 270,
+    flipH: Boolean(s.flipH ?? false),
+    flipV: Boolean(s.flipV ?? false),
   }));
 
   const handleAddMedia = (e: React.ChangeEvent<HTMLInputElement>) => {

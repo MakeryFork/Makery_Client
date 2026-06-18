@@ -90,7 +90,10 @@ export function useExport({ ffmpegRef, ffmpegLoaded, clips, onToast }: Props) {
 
       setExportProgress(97);
       const data = await ffmpeg.readFile(finalFile);
-      blob = new Blob([data instanceof Uint8Array ? data : new Uint8Array()], { type: "video/mp4" });
+      const raw = data instanceof Uint8Array ? data : new Uint8Array(0);
+      const buf = new ArrayBuffer(raw.byteLength);
+      new Uint8Array(buf).set(raw);
+      blob = new Blob([buf], { type: "video/mp4" });
 
       // 로컬 다운로드
       const blobUrl = URL.createObjectURL(blob);

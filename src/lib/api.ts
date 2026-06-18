@@ -1,6 +1,6 @@
 import type { Paginated } from "./types";
 
-export const BASE_URL = "/api/v1";
+export const BASE_URL = import.meta.env.VITE_API_URL ?? "/api/v1";
 
 export const getToken = () => localStorage.getItem("makery_token");
 export const setToken = (t: string) => localStorage.setItem("makery_token", t);
